@@ -14,7 +14,7 @@ export default async function Rituel() {
         {products?.map((p) => <ProductCard key={p.id} p={p} />)}
         {!products?.length && (
           <p className="opacity-50 text-sm col-span-full">
-            No products yet — run the SQL seed I gave you earlier in Supabase.
+            No products yet
           </p>
         )}
       </div>
