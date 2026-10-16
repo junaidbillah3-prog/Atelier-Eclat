@@ -1,55 +1,74 @@
 'use client'
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
+import ProductCard from "@/components/store/ProductCard"
 
-export default function NewProduct() {
-  const [form, setForm] = useState({ title: '', atelier: 'wardrobe', price: '', composition: '', description: '' })
-  const [file, setFile] = useState<File | null>(null)
-  const [saving, setSaving] = useState(false)
-  const router = useRouter()
+type Gender = 'all' | 'men' | 'women' | 'unisex'
+type Season = 'all' | 'spring' | 'summer' | 'fall' | 'winter' | 'all-season'
+
+export default function Parfum() {
+  const [products, setProducts] = useState<any[]>([])
+  const [gender, setGender] = useState<Gender>('all')
+  const [season, setSeason] = useState<Season>('all')
   const supabase = createClient()
 
-  const submit = async (e: any) => {
-    e.preventDefault()
-    setSaving(true)
-
-    let imageUrl = ''
-    if(file){
-      const name = `${Date.now()}-${file.name}`
-      const { error: upErr } = await supabase.storage.from('product-images').upload(name, file)
-      if(upErr){ alert(upErr.message); setSaving(false); return }
-      const { data } = supabase.storage.from('product-images').getPublicUrl(name)
-      imageUrl = data.publicUrl
-    }
-
-    const slug = form.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')
-    const { error } = await supabase.from('products').insert({
-      title: form.title, slug, atelier: form.atelier,
-      price: parseInt(form.price), composition: form.composition,
-      description: form.description, images: [imageUrl]
+  useEffect(()=>{
+    supabase.from('products').select('*').eq('atelier','parfum').order('created_at', { ascending: false }).then(({ data })=>{
+      setProducts(data || [])
     })
-    setSaving(false)
-    if(error){ alert(error.message); return }
-    router.push('/wardrobe')
-  }
+  }, [])
+
+  const filtered = products.filter(p => {
+    const gMatch = gender === 'all' || (p.gender || 'unisex') === gender
+    const sMatch = season === 'all' || (p.season || p.subcategory || 'all-season') === season
+    return gMatch && sMatch
+  })
+
+  const seasons: Season[] = ['all','spring','summer','fall','winter','all-season']
+  const genders: Gender[] = ['all','men','women','unisex']
 
   return (
-    <div className="mx-auto max-w- px-6 py-16">
-      <h1 className="font-display text-4xl">NEW PRODUCT</h1>
-      <form onSubmit={submit} className="mt-10 space-y-4">
-        <input required placeholder="Title" value={form.title} onChange={e=>setForm({...form, title:e.target.value})} className="w-full border border-black/20 p-4 text-" />
-        <select value={form.atelier} onChange={e=>setForm({...form, atelier:e.target.value})} className="w-full border border-black/20 p-4 text-">
-          <option value="wardrobe">WARDROBE</option>
-          <option value="parfum">PARFUM</option>
-          <option value="rituel">RITUEL</option>
-        </select>
-        <input required type="number" placeholder="Price — 850" value={form.price} onChange={e=>setForm({...form, price:e.target.value})} className="w-full border border-black/20 p-4 text-" />
-        <input required placeholder="Composition" value={form.composition} onChange={e=>setForm({...form, composition:e.target.value})} className="w-full border border-black/20 p-4 text-" />
-        <input required type="file" accept="image/*" onChange={e=>setFile(e.target.files?.[0]||null)} className="w-full border border-black/20 p-4 text-" />
-        <textarea required placeholder="Description" value={form.description} onChange={e=>setForm({...form, description:e.target.value})} className="w-full border border-black/20 p-4 text- h-32" />
-        <button disabled={saving} className="w-full bg-black text-white py-4 text- tracking-[0.3em] uppercase">{saving?'UPLOADING...':'CREATE PRODUCT'}</button>
-      </form>
+    <div className="mx-auto max-w-[1600px] px-4 md:px-6 py-12 md:py-16 overflow-x-hidden">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
+        <div>
+          <h1 className="font-display text-4xl sm:text-5xl md:text-7xl leading-[0.9] tracking-[-0.04em]">PARFUM</h1>
+          <p className="mt-4 text-[11px] md:text-xs tracking-[0.3em] uppercase text-[#C2A27A]">
+            EDP 100ML — SORT BY SEASON & GENDER
+          </p>
+        </div>
+        <p className="text-[11px] tracking-[0.2em] uppercase opacity-40">{filtered.length} SCENTS</p>
+      </div>
+
+      {/* GENDER TABS */}
+      <div className="mt-8 flex flex-wrap gap-px bg-black/10 border border-black/10 w-fit">
+        {genders.map(g=>(
+          <button
+            key={g}
+            onClick={()=>setGender(g)}
+            className={`px-4 md:px-6 py-3 text-[11px] tracking-[0.2em] uppercase transition ${gender===g? 'bg-black text-white' : 'bg-[#F6F2EB] hover:bg-white'}`}
+          >
+            {g}
+          </button>
+        ))}
+      </div>
+
+      {/* SEASON PILLS */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {seasons.map(s=>(
+          <button
+            key={s}
+            onClick={()=>setSeason(s)}
+            className={`px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition ${season===s? 'bg-[#C2A27A] text-white border-[#C2A27A]' : 'bg-transparent border-black/15 hover:border-black'}`}
+          >
+            {s} {s!=='all' ? 'scent' : ''}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-10 md:mt-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8 gap-y-10 md:gap-y-16">
+        {filtered.map((p: any) => <ProductCard key={p.id} p={p} />)}
+        {!filtered.length && <div className="col-span-full py-20 text-center text-xs tracking-[0.2em] uppercase opacity-40">No {gender} / {season} scents yet</div>}
+      </div>
     </div>
   )
 }
