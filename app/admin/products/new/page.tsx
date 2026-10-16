@@ -1,74 +1,141 @@
 'use client'
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import ProductCard from "@/components/store/ProductCard"
+import { useRouter } from "next/navigation"
 
-type Gender = 'all' | 'men' | 'women' | 'unisex'
-type Season = 'all' | 'spring' | 'summer' | 'fall' | 'winter' | 'all-season'
+const WARDROBE_CATS = {
+  men: ['Trouser','Coat','Tshirt','Accessories','Blazer','Shirt'],
+  women: ['Trouser','Coat','Tshirt','Accessories','Blazer','Shirt','Dresses'],
+  unisex: ['Trouser','Coat','Tshirt','Accessories','Blazer','Shirt','Dresses']
+}
 
-export default function Parfum() {
-  const [products, setProducts] = useState<any[]>([])
-  const [gender, setGender] = useState<Gender>('all')
-  const [season, setSeason] = useState<Season>('all')
+const PARFUM_SEASONS = ['Spring','Summer','Fall','Winter','All-Season']
+const GENDERS = ['men','women','unisex'] as const
+
+export default function NewProduct() {
+  const [form, setForm] = useState({ 
+    title: '', 
+    atelier: 'wardrobe', 
+    price: '', 
+    composition: '', 
+    description: '',
+    gender: 'men' as 'men'|'women'|'unisex',
+    subcategory: 'Tshirt',
+    season: 'All-Season'
+  })
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const router = useRouter()
   const supabase = createClient()
 
-  useEffect(()=>{
-    supabase.from('products').select('*').eq('atelier','parfum').order('created_at', { ascending: false }).then(({ data })=>{
-      setProducts(data || [])
-    })
-  }, [])
+  const currentSubCats = form.atelier === 'wardrobe' 
+    ? WARDROBE_CATS[form.gender]
+    : PARFUM_SEASONS
 
-  const filtered = products.filter(p => {
-    const gMatch = gender === 'all' || (p.gender || 'unisex') === gender
-    const sMatch = season === 'all' || (p.season || p.subcategory || 'all-season') === season
-    return gMatch && sMatch
-  })
+  // reset subcategory when atelier/gender changes
+  const handleAtelierChange = (atelier: string) => {
+    if(atelier === 'wardrobe'){
+      setForm({...form, atelier, subcategory: WARDROBE_CATS[form.gender][0]})
+    } else if(atelier === 'parfum'){
+      setForm({...form, atelier, season: 'All-Season'})
+    } else {
+      setForm({...form, atelier})
+    }
+  }
 
-  const seasons: Season[] = ['all','spring','summer','fall','winter','all-season']
-  const genders: Gender[] = ['all','men','women','unisex']
+  const handleGenderChange = (gender: 'men'|'women'|'unisex') => {
+    if(form.atelier === 'wardrobe'){
+      setForm({...form, gender, subcategory: WARDROBE_CATS[gender][0]})
+    } else {
+      setForm({...form, gender})
+    }
+  }
+
+  const submit = async (e: any) => {
+    e.preventDefault()
+    setSaving(true)
+
+    let imageUrl = ''
+    if(file){
+      const name = `${Date.now()}-${file.name}`
+      const { error: upErr } = await supabase.storage.from('product-images').upload(name, file)
+      if(upErr){ alert(`Upload failed: ${upErr.message}\nCreate bucket 'product-images' public in Supabase Storage.`); setSaving(false); return }
+      const { data } = supabase.storage.from('product-images').getPublicUrl(name)
+      imageUrl = data.publicUrl
+    }
+
+    const slug = form.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')
+
+    const payload: any = {
+      title: form.title, 
+      slug, 
+      atelier: form.atelier,
+      price: parseInt(form.price), 
+      composition: form.composition,
+      description: form.description, 
+      images: [imageUrl],
+      gender: form.gender,
+    }
+
+    if(form.atelier === 'wardrobe'){
+      payload.subcategory = form.subcategory.toLowerCase()
+    }
+    if(form.atelier === 'parfum'){
+      payload.season = form.season.toLowerCase()
+      payload.subcategory = form.season.toLowerCase() // keep both for easy filtering
+    }
+
+    const { error } = await supabase.from('products').insert(payload)
+    setSaving(false)
+    if(error){ alert(error.message); return }
+    router.push(form.atelier === 'wardrobe' ? '/wardrobe' : form.atelier === 'parfum' ? '/parfum' : '/admin/products')
+  }
 
   return (
-    <div className="mx-auto max-w-[1600px] px-4 md:px-6 py-12 md:py-16 overflow-x-hidden">
-      <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
-        <div>
-          <h1 className="font-display text-4xl sm:text-5xl md:text-7xl leading-[0.9] tracking-[-0.04em]">PARFUM</h1>
-          <p className="mt-4 text-[11px] md:text-xs tracking-[0.3em] uppercase text-[#C2A27A]">
-            EDP 100ML — SORT BY SEASON & GENDER
-          </p>
+    <div className="mx-auto max-w-[800px] px-4 md:px-6 py-12 md:py-16 overflow-x-hidden">
+      <h1 className="font-display text-3xl md:text-4xl uppercase">NEW PRODUCT</h1>
+      
+      <form onSubmit={submit} className="mt-10 space-y-4">
+        <input required placeholder="Title — e.g. Wool Blazer Noir" value={form.title} onChange={e=>setForm({...form, title:e.target.value})} className="w-full border border-black/20 p-4 text-sm" />
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <select value={form.atelier} onChange={e=>handleAtelierChange(e.target.value)} className="w-full border border-black/20 p-4 text-sm">
+            <option value="wardrobe">WARDROBE</option>
+            <option value="parfum">PARFUM</option>
+            <option value="rituel">RITUEL</option>
+          </select>
+
+          <select value={form.gender} onChange={e=>handleGenderChange(e.target.value as any)} className="w-full border border-black/20 p-4 text-sm uppercase">
+            <option value="men">MEN</option>
+            <option value="women">WOMEN</option>
+            <option value="unisex">UNISEX</option>
+          </select>
         </div>
-        <p className="text-[11px] tracking-[0.2em] uppercase opacity-40">{filtered.length} SCENTS</p>
-      </div>
 
-      {/* GENDER TABS */}
-      <div className="mt-8 flex flex-wrap gap-px bg-black/10 border border-black/10 w-fit">
-        {genders.map(g=>(
-          <button
-            key={g}
-            onClick={()=>setGender(g)}
-            className={`px-4 md:px-6 py-3 text-[11px] tracking-[0.2em] uppercase transition ${gender===g? 'bg-black text-white' : 'bg-[#F6F2EB] hover:bg-white'}`}
-          >
-            {g}
-          </button>
-        ))}
-      </div>
+        {/* SUBCATEGORY LOGIC */}
+        {form.atelier === 'wardrobe' && (
+          <select value={form.subcategory} onChange={e=>setForm({...form, subcategory:e.target.value})} className="w-full border border-black/20 p-4 text-sm">
+            {WARDROBE_CATS[form.gender].map(cat=>(
+              <option key={cat} value={cat}>{cat.toUpperCase()}</option>
+            ))}
+          </select>
+        )}
 
-      {/* SEASON PILLS */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {seasons.map(s=>(
-          <button
-            key={s}
-            onClick={()=>setSeason(s)}
-            className={`px-4 py-2 text-[11px] tracking-[0.2em] uppercase border transition ${season===s? 'bg-[#C2A27A] text-white border-[#C2A27A]' : 'bg-transparent border-black/15 hover:border-black'}`}
-          >
-            {s} {s!=='all' ? 'scent' : ''}
-          </button>
-        ))}
-      </div>
+        {form.atelier === 'parfum' && (
+          <select value={form.season} onChange={e=>setForm({...form, season:e.target.value})} className="w-full border border-black/20 p-4 text-sm">
+            {PARFUM_SEASONS.map(s=>(
+              <option key={s} value={s}>{s.toUpperCase()} SCENT</option>
+            ))}
+          </select>
+        )}
 
-      <div className="mt-10 md:mt-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8 gap-y-10 md:gap-y-16">
-        {filtered.map((p: any) => <ProductCard key={p.id} p={p} />)}
-        {!filtered.length && <div className="col-span-full py-20 text-center text-xs tracking-[0.2em] uppercase opacity-40">No {gender} / {season} scents yet</div>}
-      </div>
+        <input required type="number" placeholder="Price — 850" value={form.price} onChange={e=>setForm({...form, price:e.target.value})} className="w-full border border-black/20 p-4 text-sm" />
+        <input required placeholder="Composition — e.g. 100% Wool / EDP 100ML" value={form.composition} onChange={e=>setForm({...form, composition:e.target.value})} className="w-full border border-black/20 p-4 text-sm" />
+        <input required type="file" accept="image/*" onChange={e=>setFile(e.target.files?.[0]||null)} className="w-full border border-black/20 p-4 text-sm" />
+        <textarea required placeholder="Description" value={form.description} onChange={e=>setForm({...form, description:e.target.value})} className="w-full border border-black/20 p-4 text-sm h-32" />
+        
+        <button disabled={saving} className="w-full bg-black text-white py-4 text-xs tracking-[0.3em] uppercase">{saving?'UPLOADING...':'CREATE PRODUCT'}</button>
+      </form>
     </div>
   )
 }
